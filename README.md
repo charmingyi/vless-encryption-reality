@@ -35,6 +35,28 @@ Password (PublicKey): <pub>
 + x25519_passwd=$(echo "$x25519_out" | awk '/^Password/{print $NF}')
 ```
 
+## 第二处修复：去掉链接里的 ML-KEM 段（为了 Shadowrocket 能连）
+
+实测（同一台中转机、同一台 iOS 设备，逐一排除过链路/参数/`flow`/模式 `native|xorpub|random`/`0rtt|1rtt`/5 段与 4 段拼接/新旧内核 v25.9.5 与 v26.3.27）：
+
+| 客户端 `encryption` 形态 | Shadowrocket | v2rayN |
+| --- | --- | --- |
+| `…0rtt.<43字符 X25519 公钥>.<700+字符 ML-KEM 客户端>`（上游默认） | ❌ 不通 | ✅ 通 |
+| `…0rtt.<43字符 X25519 公钥>`（**本 fork**） | ✅ **通** | ✅ 通 |
+
+因此本 fork 只保留 **X25519-only 身份**（Xray PR #5067 明确允许"后面 base64 至少二选一"）：
+
+```diff
+-    "decryption": "mlkem768x25519plus.xorpub.600s.${x25519_priv}.${mlkem_seed}"
++    "decryption": "mlkem768x25519plus.xorpub.600s.${x25519_priv}"
+...
+-    …&encryption=mlkem768x25519plus.xorpub.0rtt.${x25519_passwd}.${mlkem_client}&…
++    …&encryption=mlkem768x25519plus.xorpub.0rtt.${x25519_passwd}&…
+```
+
+协议、端口、Reality 出站、Vision 全部不变；代价是**少了 ML-KEM 的抗量子那一半**（前向安全与 0-RTT 保留）。
+如果要抗量子，把上面两行的 `.${mlkem_seed}` / `.${mlkem_client}` 加回去即可（并去掉两行注释掉即可），但那样 Shadowrocket 就连不上。
+
 其余逻辑与上游**完全一致**（未做任何其它改动）。
 
 ## 用法
