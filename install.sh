@@ -116,13 +116,14 @@ setup_relay() {
     read -rp "请输入入站端口 [默认 443]: " inbound_port
     inbound_port=${inbound_port:-443}
 
-    local uuid x25519_out x25519_priv x25519_passwd public_ip
+    local uuid x25519_out x25519_priv x25519_passwd mlkem_out mlkem_seed mlkem_client public_ip
     uuid=$(xray uuid)
     x25519_out=$(xray x25519)
     x25519_priv=$(echo "$x25519_out" | awk '/^PrivateKey:/{print $2}')
     x25519_passwd=$(echo "$x25519_out" | awk '/^Password/{print $NF}')
-    # 只保留 X25519-only: 实测带 ML-KEM 段的链接在 Shadowrocket 上无法连接，
-    # 而 Xray PR #5067 明确允许只用一个 X25519 身份（协议与端口逻辑不变）。
+    mlkem_out=$(xray mlkem768)
+    mlkem_seed=$(echo "$mlkem_out" | awk '/^Seed:/{print $2}')
+    mlkem_client=$(echo "$mlkem_out" | awk '/^Client:/{print $2}')
     public_ip=$(get_public_ip)
 
     cat > "$XRAY_CONFIG" <<EOF
@@ -136,7 +137,7 @@ setup_relay() {
             "protocol": "vless",
             "settings": {
                 "clients": [{"id": "${uuid}", "flow": "xtls-rprx-vision"}],
-                "decryption": "mlkem768x25519plus.xorpub.600s.${x25519_priv}"
+                "decryption": "mlkem768x25519plus.xorpub.600s.${x25519_priv}.${mlkem_seed}"
             },
             "streamSettings": {"network": "tcp"}
         }
@@ -180,7 +181,7 @@ EOF
     info "中转机配置完成!"
     echo ""
     echo -e "${CYAN}========== 客户端分享链接 (VLESS Encryption) ==========${NC}"
-    echo -e "${GREEN}vless://${uuid}@${public_ip}:${inbound_port}?encryption=mlkem768x25519plus.xorpub.0rtt.${x25519_passwd}&flow=xtls-rprx-vision&security=none&type=tcp&headerType=none#Encryption${NC}"
+    echo -e "${GREEN}vless://${uuid}@${public_ip}:${inbound_port}?encryption=mlkem768x25519plus.xorpub.0rtt.${x25519_passwd}.${mlkem_client}&flow=xtls-rprx-vision&security=none&type=tcp&headerType=none#Encryption${NC}"
     echo -e "${CYAN}========================================================${NC}"
 }
 
